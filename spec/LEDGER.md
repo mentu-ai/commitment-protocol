@@ -1,6 +1,6 @@
 # Ledger Format
 
-**Version**: 2.0
+**Version**: 2.2
 
 ---
 
@@ -53,7 +53,7 @@ Each line is a complete JSON object representing one EpistemicSignal.
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `payload.body` | Yes | string | Content: observation, obligation, evidence, annotation |
-| `payload.kind` | No | string | Signal kind: `observation`, `commitment`, `evidence`, `step_result`, `finding`, `learning`, `event`, `claim`, `submission`, `approval`, `verdict`, `reopen` |
+| `payload.kind` | No | string | Signal kind: `observation`, `commitment`, `evidence`, `step_result`, `finding`, `learning`, `event`, `claim`, `submission`, `approval`, `verdict`, `reopen`, `session_anchor`, `lane_cutover` (v2.2 chain markers), `steer_message` (v2.2 Invariant 6), `model_call`, `tool_call`, `call_lane` (v2.2 execution lane), `fork` (v2.2 fork lineage) |
 | `payload.source` | Conditional | string | Source signal ID. Required for `commit`. |
 | `payload.commitment` | Conditional | string | Commitment ID. Required for `claim`, `release`, `submit`, `approve`, `close`, `reopen`. |
 | `payload.evidence` | Conditional | string | Evidence signal ID. Required for `close`, `submit`. |
@@ -107,6 +107,80 @@ See [TRUST.md](./TRUST.md) for the trust computation model.
 |-------|----------|------|-------------|
 | `observationLevel` | No | string | `explicit`, `deductive`, `inductive`, `contradiction` |
 | `sourceIds` | No | string[] | Premise signal IDs for this observation |
+
+---
+
+## Execution Lane (v2.2)
+
+Extends truth-by-replay from the commitment plane to the execution plane:
+individual model and tool calls become content-addressed events, so lineage
+reaches the specific call that produced an artifact, not just the step.
+
+Two payload kinds record a completed call:
+
+| Kind | Meaning |
+|------|---------|
+| `model_call` | One completed model request/response. |
+| `tool_call` | One completed tool request/response. |
+
+Each carries, in `payload.body` and `semantic.entities`:
+
+| Field | Meaning |
+|-------|---------|
+| `request_hash` | SHA-256 over the **canonical** request — sorted-key, compact JSON of `{model, system, messages, tool_definitions, output_schema}` (models) or `{tool, arguments}` (tools). Same canonicalization as the signal content hash. This is the blob key. |
+| `response_digest` | SHA-256 of the stored response body. Lets strict replay detect a mutated blob. |
+| `model` / `tool` | The callee. |
+| `run_id` / `step` | The run and step the call belongs to (the CIR `run_id` column + step label). |
+| `cost` | Optional cost estimate. |
+
+**Storage is dual-lane.** Response bodies live OUT of the chain, content-addressed
+at `.mentu/cache/model-responses/<request_hash>.json` (workspace-relative), and
+the run's calls are listed in an append-only per-run **manifest** co-located with
+the blobs. Only digests and hashes enter signals, so the tamper-evident ledger
+anchors the lane without absorbing its volume. Bodies are size-capped (2 MB
+default, truncated with a marker; the digest is over what is stored). Per-run
+aggregation is a CIR query on `(run_id, step)` — an implementation MAY also
+denormalize the per-step list of `request_hash` values onto the step's
+`step_result` signal.
+
+**The chain anchors the lane.** At the sequence-end boundary, a run that recorded
+calls appends a `call_lane` annotation (`payload.kind: "call_lane"`) carrying
+`manifest_sha256` — the digest of the run's manifest — into the merkle chain.
+The manifest and blobs are out-of-chain files; the anchor is what makes them
+tamper-evident: strict replay recomputes the manifest digest against the anchored
+one and reports a mismatch as `E_REPLAY_DIVERGED`.
+
+**Retention.** Blobs and manifests are prunable by age like any cache; wiring
+their pruning into the vacuum cadence (`cir-vacuum-cycle`) is a named follow-up.
+Pruning removes replayability for the affected runs but never touches chain
+integrity — anchors remain valid history.
+
+**Coverage boundary (honest).** A conforming implementation records the calls it
+makes **in-process**. Where a step delegates to a child agent *process* (e.g. a
+CLI backend), that child's own model/tool calls are outside the recorder's view;
+recording MUST NOT attempt to intercept child-process traffic, and the boundary
+MUST be documented. In this engine's v2.2, the recorded in-process calls are the
+semantic gate and the completion verifier; the delegated agent step's internal
+calls are out of lane. Default on; opt out with `MENTU_NO_CALL_LANE=1`.
+
+---
+
+## Fork Lineage (v2.2)
+
+When a run is forked from another at a chosen step, the lineage is anchored in
+the chain by a `fork` annotation (`payload.kind: "fork"`), not merely in mutable
+run metadata. It records, in `payload.body` and `semantic.entities`:
+
+| Field | Meaning |
+|-------|---------|
+| `parent_run_id` | The run this one branched from. |
+| `fork_at_step` | The step index the fork branched at. |
+| `prefix_head_hash` | The chain head hash at fork creation — the exact ledger state the fork inherited. |
+
+Because `prefix_head_hash` is a hash of the shared chain, fork lineage is
+cryptographically verifiable rather than assertable metadata that can drift out
+of sync. A reader confirms a fork's claimed ancestry by checking that
+`prefix_head_hash` names a real earlier row on the chain.
 
 ---
 
@@ -313,25 +387,104 @@ Attaches note to any signal. Subsumes v1.0 `link`, `dismiss`, `triage`.
 
 The `hash` field is computed as follows:
 
-1. Serialize the signal to JSON with **sorted keys** and **no whitespace**
-2. **Exclude** the `hash` and `prevHash` fields from the serialization
-3. Compute SHA-256 of the resulting bytes
-4. Encode as lowercase hexadecimal (64 characters)
+1. Take the signal object and set the `hash` and `prevHash` fields to the empty
+   string `""`. **The keys are retained** (the values are zeroed); they are not
+   removed from the object.
+2. Serialize to JSON with **recursively sorted keys** and **no insignificant
+   whitespace** (compact separators), escaping forward slashes as `\/` and
+   emitting UTF-8 bytes. This matches the engine's `JSONEncoder` with
+   `.sortedKeys` (`MentuEngine` `EpistemicSignal.computeContentHash`).
+3. Compute SHA-256 of the resulting bytes.
+4. Encode as lowercase hexadecimal (64 characters).
 
 ```python
 import hashlib, json
 
 def compute_hash(signal):
-    obj = {k: v for k, v in signal.items() if k not in ("hash", "prevHash")}
-    canonical = json.dumps(obj, sort_keys=True, separators=(",", ":"))
+    obj = dict(signal)
+    obj["hash"] = ""          # zero the value; KEEP the key
+    obj["prevHash"] = ""      # zero the value; KEEP the key
+    canonical = json.dumps(
+        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    canonical = canonical.replace("/", "\\/")   # JSONEncoder escapes forward slashes
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 ```
+
+> **Canonicalization note.** Two details are load-bearing and were previously
+> under-specified: (a) `hash`/`prevHash` are **zeroed to `""` with the keys
+> kept**, not stripped from the object; and (b) forward slashes are **escaped
+> as `\/`**, matching the engine's Swift `JSONEncoder`. A `compute_hash` that
+> strips the keys or omits the slash escaping will fail to reproduce
+> engine-written hashes even though it produces a valid-looking digest. The
+> reference verifier (`protocol/tools/verify_ledger.py`) and the worked example
+> (`protocol/examples/sample-ledger.jsonl`) are both computed with this
+> algorithm; run the verifier against a real `.mentu/ledger.jsonl` to confirm.
 
 The `prevHash` field is the `hash` of the immediately preceding signal in the ledger. For the first signal (genesis), `prevHash` is:
 
 ```
 0000000000000000000000000000000000000000000000000000000000000000
 ```
+
+### Chain integrity — canonical-ancestry, not adjacency (v2.2)
+
+A verifier checks the chain by **canonical ancestry**, not by comparing each row
+to the line immediately above it. Each append links its `prevHash` to the head
+the writer read under an exclusive lock; interleaved rows from concurrent writers
+or the out-of-chain lane mean the linked head is often *not* the adjacent line. A
+`prevHash` is sound when it resolves to the `hash` of **any earlier hashed row**.
+
+A conforming verifier classifies each row into exactly one of:
+
+1. **Canonical / skip-link** — `prevHash` resolves to an earlier hashed row (or
+   is genesis). Sound.
+
+2. **Genesis / import anchor** — the **first hashed row of the file**. On an
+   imported or rotated ledger it legitimately links to the head of a prior file
+   (a hash absent from this one). It is the file's genesis anchor, **not** a
+   break. A missing-ancestor link on any *later* row — once the chain is
+   established — is a genuine break.
+
+3. **Fork** — two or more rows sharing one parent hash. Legitimate on a ledger
+   shared by concurrent workspaces; reported, **never fatal**. (The engine keys
+   its append lock on the symlink-*resolved* real ledger path, so one physical
+   ledger has one lock and new forks do not occur; historical forks are frozen,
+   content-valid append-only bytes.)
+
+4. **Break** — a `prevHash` (on a non-genesis, non-`session_anchor` row) that
+   resolves to no earlier hashed row: a missing ancestor. **Fatal** — tampering
+   or truncation. `E_CHAIN_BROKEN`.
+
+5. **Out-of-chain lane** — a row with no `hash` field. **Content-uncheckable**,
+   not a chain anchor. Hook-authored annotations (`actor: hook:*`, `op: annotate`
+   at session-end / pre-compact / post-compact) and non-signal telemetry (e.g.
+   MCP tool-call rows) live here. A verifier MUST count hashed and unhashed rows
+   separately and MUST NOT report an unhashed row as a hash failure.
+
+#### Typed markers (v2.2)
+
+Two optional `op: annotate` markers convert previously-tolerated artifacts into
+checkable structure. Both are written through the hashed merkle path (`mentu
+ledger anchor` / `mentu ledger cutover`), so they are themselves chain anchors.
+
+- **`session_anchor`** (`payload.kind: "session_anchor"`) — documents an
+  intentional re-anchor (e.g. resuming against a ledger a different machine
+  advanced). The head it re-anchored from is recorded in `semantic.entities[0]`.
+  A verifier treats a `session_anchor`'s own `prevHash` discontinuity as expected,
+  exempt from break counting.
+
+- **`lane_cutover`** (`payload.kind: "lane_cutover"`) — declares that unhashed
+  rows appended **after** this marker are chain violations (not the grandfathered
+  out-of-chain lane). Before any `lane_cutover`, unhashed rows are grandfathered;
+  after it, an unhashed row is fatal. Drop this once external hook writers have
+  migrated onto a hashed append path.
+
+A conforming verifier exits non-zero iff: any content-hash mismatch, any break
+(missing ancestor after the genesis anchor), or any unhashed row after a
+`lane_cutover`. Forks, the genesis/import anchor, and pre-cutover unhashed rows
+are reported but never fatal. The reference implementation is
+`protocol/tools/verify_ledger.py`; run it against a real `.mentu/ledger.jsonl`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Execution Algebra
 
-**Version**: 2.0
+**Version**: 2.2
 **Status**: Stable
 
 ---
@@ -53,6 +53,12 @@ Four mechanical guards prevent runaway execution:
 
 Trust computation is per-step, always. Higher primitives aggregate but never override.
 
+Content injected into a step between boundaries — a mid-run steer message, a
+human/gate decision, an injected context brief — is governed by **Invariant 6
+(Inputs Are Events)**: it MUST be recorded as a signal (e.g. `steer_message`)
+before the step consumes it, so a step's actual input is auditable and replayable.
+See [INVARIANTS.md](./INVARIANTS.md) §6.
+
 ---
 
 ## Formula — The Sequence
@@ -98,6 +104,11 @@ A parallel runs multiple formulas concurrently, each in isolation.
 ```
 
 Formulas cannot interfere with each other. The ledger is shared and write-locked. Rate limits are coordinated — one limit affects everyone.
+
+A run forked from another (fork-at-step) records its lineage as a chain-anchored
+`fork` signal carrying `prefix_head_hash` — the chain head it branched from — so
+the branch relationship is cryptographically verifiable, not mutable metadata.
+See [LEDGER.md](./LEDGER.md) §Fork Lineage (v2.2).
 
 ---
 

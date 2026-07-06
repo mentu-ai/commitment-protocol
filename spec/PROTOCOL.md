@@ -1,6 +1,6 @@
 # The Mentu Protocol
 
-**Version**: 2.0
+**Version**: 2.2
 **Status**: Stable
 
 ---
@@ -348,6 +348,28 @@ def compute_state(ledger, commitment_id):
 
 ---
 
+## Projections (v2.2)
+
+State is computed by replaying the ledger. An implementation MAY cache computed
+state for performance — but only as a **projection**: stored state that is keyed
+by the content hash (or chain-head hash) of the inputs it folds from, and that is
+discarded and recomputed on any key mismatch. A projection is never authoritative;
+the ledger is. This is how the Sacred Invariant ("no component stores its own
+state") coexists with caches: a cache is legal exactly when it cannot go stale
+without being detected.
+
+The reference case is step-result reuse. The engine's `StepCache` is a conformant
+projection — keyed by `SHA256(prompt + dependency outputs + git tree)`; a changed
+input misses and re-runs. **Resume and fork inheritance MUST honor the same
+discipline**: a prior step's result is reused only when a freshly recomputed reuse
+key matches the key stored on that result (`StepStatus.cacheKey`). A result with a
+stale key — or, on a pre-v2.2 ledger, no key at all — is not reused; the step
+re-runs. Reusing a completed step *by label alone*, without revalidating its
+inputs, is non-conformant (it silently serves stale work when the prompt or tree
+has since changed).
+
+---
+
 ## Error Codes
 
 | Code | Meaning |
@@ -363,6 +385,7 @@ def compute_state(ledger, commitment_id):
 | `E_CONSTRAINT_VIOLATED` | Constraint not satisfied |
 | `E_CHAIN_BROKEN` | Merkle chain integrity violation |
 | `E_CITATION_REQUIRED` | Signal kind requires trace.parent |
+| `E_REPLAY_DIVERGED` | Strict replay found a recorded call that no longer reproduces (missing/mutated response blob) — pinned to the first divergent call |
 
 ---
 
@@ -399,6 +422,30 @@ A conforming v2.0 implementation MUST:
 6. Return specified error codes
 7. Enforce citation gate (K1) on applicable signal kinds
 
+A conforming v2.2 implementation additionally MUST:
+
+8. Verify the chain by **canonical ancestry**, not line adjacency (§Merkle
+   Integrity): a break is a missing ancestor; forks and the genesis/import anchor
+   are not breaks; unhashed rows are the out-of-chain lane (fatal only after a
+   `lane_cutover` marker)
+9. Record injected inputs as events before consumption (**Invariant 6**) —
+   `steer_message` for mid-run steering
+10. Treat cached state as a **projection** — content-keyed, discarded on mismatch
+    (§Projections); never reuse a step result by label without revalidating its key
+
+A conforming v2.2 implementation MUST, **where it implements an execution plane**:
+
+11. Record in-process model/tool calls as content-addressed `model_call` /
+    `tool_call` events (§Execution Lane), within the documented in-process
+    coverage boundary
+12. Support strict run replay, reporting the first divergent call as
+    `E_REPLAY_DIVERGED` (§Conformance / Run replay)
+13. Anchor fork lineage in the chain via a `fork` signal carrying
+    `prefix_head_hash` (§Fork Lineage)
+
+An implementation without an execution plane (commitment-only) remains conformant
+without items 11–13.
+
 A conforming implementation SHOULD:
 1. Compute mechanical trust scores
 2. Support semantic context and relations
@@ -409,6 +456,29 @@ Two implementations are compatible if:
 - Given identical operation, they produce identical validation result
 - Given identical signal content, they compute identical hash
 
+### Run replay (v2.2)
+
+Truth-by-replay extends to the execution plane. Given a run's recorded call lane
+(§Execution Lane in [LEDGER.md](./LEDGER.md)) and its content-addressed response
+store, a conforming implementation reproduces identical projections; **strict
+replay** recomputes each response blob's digest against the recorded
+`response_digest` and reports the **first** divergent call (a missing or mutated
+blob) as `E_REPLAY_DIVERGED`. Where the run's manifest is chain-anchored (a
+`call_lane` signal carrying `manifest_sha256`), strict replay also verifies the
+manifest against the anchor — a mutated or missing manifest is likewise
+`E_REPLAY_DIVERGED`.
+
+This is a property of re-projecting an *already recorded* run — never a claim
+that running an agent is reproducible. A model call is not a deterministic
+function of its inputs; determinism is achieved by *recording* the response and
+serving it on replay, not by assuming re-execution yields the same bytes. A green
+strict replay is therefore a proof about the recording's integrity, and is the
+mechanism that polices otherwise-unenforced determinism (a call whose input
+embedded wall-clock time or a fresh UUID fails strict replay, named at the first
+divergent call). Recording coverage is bounded by the in-process boundary
+(§Execution Lane): calls made by a delegated child agent process are outside the
+recorded lane and thus outside replay.
+
 ---
 
 ## The Sacred Invariant
@@ -417,7 +487,9 @@ Every module follows one rule:
 
 **Read ledger, write ops.**
 
-No component stores its own state. State is always computed by replaying the ledger.
+No component stores its own state *authoritatively*. State is always computed by
+replaying the ledger. Caches are permitted only as **projections** — content-keyed,
+discard-on-mismatch — never as a source of truth. See §Projections.
 
 ---
 
