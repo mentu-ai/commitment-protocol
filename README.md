@@ -1,17 +1,35 @@
 # The Commitment Protocol
 
-Observations become obligations. Obligations require evidence. Evidence is hash-chained, trust-scored, and append-only. State is never stored — always computed by replaying the ledger.
+Observations become obligations. Obligations require evidence. Evidence is hash-chained, trust-scored, and append-only. State is never stored. It is computed by replaying the ledger.
 
 ```jsonl
-{"id":"mem_a1b2c3d4","op":"capture","hash":"bed4c1c8...","prevHash":"0000...","payload":{"body":"Customer reported checkout fails on empty cart","kind":"observation"}}
-{"id":"cmt_e5f6g7h8","op":"commit","hash":"56789c80...","prevHash":"bed4c1c8...","payload":{"body":"Fix empty cart checkout bug","source":"mem_a1b2c3d4"}}
-{"id":"op_i9j0k1l2","op":"claim","hash":"c491a41c...","prevHash":"56789c80...","payload":{"commitment":"cmt_e5f6g7h8"}}
-{"id":"mem_m3n4o5p6","op":"capture","hash":"9b280af3...","prevHash":"c491a41c...","payload":{"body":"Fixed null check in cart.ts:42","kind":"evidence"},"trust":{"confidence":0.85}}
-{"id":"op_q7r8s9t0","op":"submit","hash":"815fd202...","prevHash":"9b280af3...","payload":{"commitment":"cmt_e5f6g7h8","evidence":"mem_m3n4o5p6"}}
-{"id":"op_u1v2w3x4","op":"approve","hash":"7ddb5ab4...","prevHash":"815fd202...","payload":{"commitment":"cmt_e5f6g7h8"},"trust":{"confidence":0.95,"verification":"human_verified"}}
+{"id":"mem_a1b2c3d4","op":"capture","hash":"5173eb47...","prevHash":"00000000...","payload":{"body":"Customer reported checkout fails on empty cart","kind":"observation"}}
+{"id":"cmt_e5f6g7h8","op":"commit","hash":"2c7a0154...","prevHash":"5173eb47...","payload":{"body":"Fix empty cart checkout bug","kind":"commitment","source":"mem_a1b2c3d4"}}
+{"id":"op_i9j0k1l2","op":"claim","hash":"b238a07f...","prevHash":"2c7a0154...","payload":{"kind":"claim","commitment":"cmt_e5f6g7h8"}}
+{"id":"mem_m3n4o5p6","op":"capture","hash":"f7658824...","prevHash":"b238a07f...","payload":{"body":"Fixed null check in cart.ts:42","kind":"evidence"}}
+{"id":"op_q7r8s9t0","op":"submit","hash":"389f98fe...","prevHash":"f7658824...","payload":{"kind":"submission","commitment":"cmt_e5f6g7h8","evidence":"mem_m3n4o5p6"}}
+{"id":"op_u1v2w3x4","op":"approve","hash":"c7fa6811...","prevHash":"389f98fe...","payload":{"kind":"approval","commitment":"cmt_e5f6g7h8"},"trust":{"confidence":0.95,"verification":"human_verified"}}
 ```
 
+Those hash prefixes are the real ones from
+[examples/sample-ledger.jsonl](./examples/sample-ledger.jsonl). Payloads are
+abbreviated here; the file carries the full rows.
+
 Six signals. One unbroken hash chain. Observation → obligation → claim → evidence → submission → approval. That's the whole protocol.
+
+This repository is the specification, not an implementation. It holds the
+specs, an agent instruction template, a sample ledger, and a reference
+verifier. It is for anyone building an agent framework, a ledger, or a trust
+model who wants agent work to close against evidence rather than assertion.
+
+Verify the sample chain in one command. Python 3 is the only requirement:
+
+```bash
+git clone https://github.com/mentu-ai/protocol && cd protocol
+python3 tools/verify_ledger.py examples/sample-ledger.jsonl
+```
+
+For a working CLI, see [Agent Workflow](#agent-workflow) below.
 
 ---
 
@@ -27,18 +45,18 @@ Six signals. One unbroken hash chain. Observation → obligation → claim → e
 
 | You are | Start here |
 |---------|------------|
-| **Building an agent framework** | [Protocol Spec](./spec/PROTOCOL.md) — nine operations, state machine, Merkle chain |
-| **Implementing a ledger** | [Ledger Format](./spec/LEDGER.md) — signal schema, hash computation algorithm |
-| **Adding trust scoring** | [Trust Spec](./spec/TRUST.md) — seven-weight model, three confidence values, decay |
-| **Orchestrating multi-step work** | [Execution Algebra](./spec/EXECUTION.md) — ten composable primitives |
-| **Teaching an agent the protocol** | [Agent Instructions](./agents/AGENTS.md) — drop-in template for any AI agent |
-| **Exploring by example** | [Sample Ledger](./examples/sample-ledger.jsonl) — six signals with real SHA-256 hashes |
+| **Building an agent framework** | [Protocol Spec](./spec/PROTOCOL.md): nine operations, state machine, Merkle chain |
+| **Implementing a ledger** | [Ledger Format](./spec/LEDGER.md): signal schema, hash computation algorithm |
+| **Adding trust scoring** | [Trust Spec](./spec/TRUST.md): seven-weight model, three confidence values, decay |
+| **Orchestrating multi-step work** | [Execution Algebra](./spec/EXECUTION.md): ten composable primitives |
+| **Teaching an agent the protocol** | [Agent Instructions](./agents/AGENTS.md): drop-in template for any AI agent |
+| **Exploring by example** | [Sample Ledger](./examples/sample-ledger.jsonl): six signals with real SHA-256 hashes |
 
 ---
 
 ## One Signal Type
 
-Everything in the ledger is an **EpistemicSignal**. Observations, commitments, evidence, approvals — one type, one schema, one chain.
+Everything in the ledger is an **EpistemicSignal**. Observations, commitments, evidence, approvals. One type, one schema, one chain.
 
 ```json
 {
@@ -47,8 +65,8 @@ Everything in the ledger is an **EpistemicSignal**. Observations, commitments, e
   "ts": "2026-04-02T10:30:00Z",
   "actor": "human:rashid",
   "workspace": "my-project",
-  "hash": "bed4c1c85f6561da...",
-  "prevHash": "0000000000000000...",
+  "hash": "<sha256 of this signal>",
+  "prevHash": "<hash of the signal before it>",
   "payload": {
     "body": "Customer reported checkout fails on empty cart",
     "kind": "observation"
@@ -61,6 +79,12 @@ Everything in the ledger is an **EpistemicSignal**. Observations, commitments, e
 }
 ```
 
+The block above shows the full field set. `id`, `op`, `ts`, `actor`,
+`workspace`, `hash`, `prevHash`, and `payload.body` are required. `semantic`,
+`trust`, `trace`, and `relations` are optional and are omitted when unused. For
+rows whose hashes you can recompute yourself, read the sample ledger.
+[LEDGER.md](./spec/LEDGER.md) carries the field-by-field table.
+
 ---
 
 ## Nine Operations
@@ -72,9 +96,9 @@ Everything in the ledger is an **EpistemicSignal**. Observations, commitments, e
 | `claim` | Take responsibility |
 | `release` | Give it back |
 | `close` | Resolve with evidence |
-| `submit` | Request closure — enters `in_review` |
+| `submit` | Request closure, entering `in_review` |
 | `approve` | Accept a submission |
-| `reopen` | Reject — back to `claimed` |
+| `reopen` | Reject, returning to `claimed` |
 | `annotate` | Attach a note to any signal |
 
 State machine:
@@ -90,7 +114,7 @@ State machine:
 
 ## Mechanical Trust
 
-Trust is computed from observation, never self-reported. Seven weighted signals — exit code, test pass rate, context utilization, completion detection, duration, error state, evidence depth — produce a confidence score between 0 and 1.
+Trust is computed from observation, never self-reported. Seven weighted signals (exit code, test pass rate, context utilization, completion detection, duration, error state, evidence depth) produce a confidence score between 0 and 1.
 
 Three values track how trust evolves:
 
@@ -113,17 +137,17 @@ Ten composable primitives. Each one accepts an intent, produces evidence, and re
 | Primitive | Signature |
 |-----------|-----------|
 | **Step** | `S: (Intent, Context) → (Evidence, Trust)` |
-| **Formula** | `fold(S₁, S₂, …, Sₙ)` — ordered steps, knowledge accumulates |
-| **Pipeline** | `F₁ ; F₂ ; … ; Fₙ` — sequential formulas, conditional routing |
-| **Parallel** | `‖{F₁, F₂, …, Fₙ}` — concurrent, isolated |
-| **Compound** | `G = (V, E)` — dependency graph, topological execution |
-| **Adversarial** | `A(F_blue, F_red)` — Blue defends, Red attacks, trust adjusts |
-| **Convergent** | `C({F₁…Fₙ}, σ)` — N strategies, selector picks the winner |
+| **Formula** | `fold(S₁, S₂, …, Sₙ)`: ordered steps, knowledge accumulates |
+| **Pipeline** | `F₁ ; F₂ ; … ; Fₙ`: sequential formulas, conditional routing |
+| **Parallel** | `‖{F₁, F₂, …, Fₙ}`: concurrent, isolated |
+| **Compound** | `G = (V, E)`: dependency graph, topological execution |
+| **Adversarial** | `A(F_blue, F_red)`: Blue defends, Red attacks, trust adjusts |
+| **Convergent** | `C({F₁…Fₙ}, σ)`: N strategies, selector picks the winner |
 | **Temporal** | Scheduled execution with evidence TTL |
 | **Sentinel** | Continuous monitoring with progressive escalation |
 | **Substrate** | Meta-operations on trust weights and configuration |
 
-They form a closed algebra — any primitive embeds any other without modification. A step runs identically alone or inside a 200-step compound.
+They form a closed algebra. Any primitive embeds any other without modification. A step runs identically alone or inside a 200-step compound.
 
 [Full execution specification →](./spec/EXECUTION.md)
 
@@ -137,12 +161,27 @@ Every signal carries the SHA-256 hash of the one before it. The genesis signal l
 import hashlib, json
 
 def compute_hash(signal):
-    obj = {k: v for k, v in signal.items() if k not in ("hash", "prevHash")}
+    obj = dict(signal)
+    obj["hash"] = ""          # keys are retained and zeroed, not removed
+    obj["prevHash"] = ""
     canonical = json.dumps(obj, sort_keys=True, separators=(",", ":"))
+    canonical = canonical.replace("/", "\\/")   # Swift JSONEncoder escapes slashes
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 ```
 
-The [sample ledger](./examples/sample-ledger.jsonl) ships with real hashes you can verify.
+Both details matter. Dropping the two keys instead of zeroing them, or leaving
+forward slashes unescaped, produces a different digest for every signal.
+
+The [sample ledger](./examples/sample-ledger.jsonl) ships with real hashes, and
+[tools/verify_ledger.py](./tools/verify_ledger.py) is the reference verifier:
+
+```bash
+python3 tools/verify_ledger.py examples/sample-ledger.jsonl
+```
+
+It recomputes every content hash, walks the chain, and exits non-zero on a
+mismatch, a missing ancestor, or a post-cutover unhashed row. On the sample
+ledger it reports 6/6 verified.
 
 ---
 
@@ -150,7 +189,12 @@ The [sample ledger](./examples/sample-ledger.jsonl) ships with real hashes you c
 
 Any agent that can read a file and run shell commands can follow the protocol. No SDK. No integration. Drop [AGENTS.md](./agents/AGENTS.md) into `.mentu/` and the agent knows what to do.
 
+This repository is the specification. `mentu` is one implementation of it, and
+it is what the commands below invoke:
+
 ```bash
+npm install -g mentu
+
 mentu status                                    # read the ledger
 mentu claim cmt_e5f6g7h8                        # take responsibility
 # ... do the work ...
@@ -158,7 +202,8 @@ mentu capture "Fixed null check" --kind evidence  # record what happened
 mentu submit cmt_e5f6g7h8 --evidence mem_xyz789   # submit for review
 ```
 
-Works for Claude, GPT, Cursor, Devin, Codex — any agent, today.
+The protocol does not require it. A ledger is JSON Lines and the hash algorithm
+is a few lines of Python, so any agent that can append to a file can participate.
 
 ---
 
