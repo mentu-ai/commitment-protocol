@@ -257,6 +257,15 @@ A substrate for accountable action that isn't itself accountable is a contradict
 
 ---
 
+## Citing and contributing
+
+To cite the specification, use [CITATION.cff](./CITATION.cff) (GitHub shows it
+as "Cite this repository"). Questions, ambiguities and proposed changes are
+welcome: see [CONTRIBUTING.md](./CONTRIBUTING.md). Report a security problem
+privately, as [SECURITY.md](./SECURITY.md) describes.
+
+---
+
 ## License
 
 [MIT](./LICENSE)

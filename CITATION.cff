@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use or implement this specification, please cite it as below."
+type: software
+title: "The Commitment Protocol: an accountability ledger for agent work"
+version: "2.3"
+date-released: 2026-09-24
+license: MIT
+authors:
+  - family-names: Azarang
+    given-names: Rashid
+    orcid: "https://orcid.org/0009-0008-5528-4246"
+    affiliation: "Independent Researcher"
+repository-code: "https://github.com/mentu-ai/commitment-protocol"
+abstract: >-
+  A specification for an append-only, hash-chained ledger in which observations
+  become obligations and obligations close against evidence. It defines the
+  operations and their state machine, the ledger format and hash algorithm, trust
+  labels that name which checks ran, and verifier verdicts that state their
+  coverage. Includes an agent instruction template, a sample ledger and a
+  reference verifier.
+keywords:
+  - accountability
+  - agents
+  - commitments
+  - ledger
+  - evidence
+  - specification

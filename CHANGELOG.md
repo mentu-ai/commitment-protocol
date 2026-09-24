@@ -19,6 +19,10 @@ format are unchanged; every v2.2 ledger remains readable.
 - **README:** the invariant "every `prevHash` matches the prior `hash`" now matches LEDGER.md: a `prevHash` resolves to an earlier hashed row, and a verifier states which rows the chain places.
 - **Reference verifier:** it requires an explicit path. It no longer defaults to `~/.mentu/ledger.jsonl`, which pointed a first run at a live ledger.
 
+### Repository
+- Tests for the reference verifier (`tests/`, synthetic chains for each verdict and exit code) and a CI workflow that runs them and verifies the sample ledger.
+- `CITATION.cff`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `SECURITY.md`. Releases are tagged from v2.2 on.
+
 ## v2.2 — 2026-07-05 (protocol & ledger hardening)
 
 Extends truth-by-replay from the commitment plane to the execution plane and

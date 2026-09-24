@@ -1,0 +1,16 @@
+name: Verify
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Reference verifier tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Sample ledger verifies
+        run: python3 tools/verify_ledger.py examples/sample-ledger.jsonl
