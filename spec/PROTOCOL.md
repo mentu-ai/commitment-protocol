@@ -297,6 +297,14 @@ Every operation follows this structure:
 - Cannot `claim` a commitment claimed by another actor
 - Cannot `close` without evidence
 - Cannot `release` if not owner
+- Cannot `submit` if not owner (v2.3)
+
+### References (v2.3)
+- An evidence ID with a ledger prefix (`mem_`, `cmt_`, `op_`, `ann_`) names a row
+  in this ledger and MUST resolve there (`E_REF_NOT_FOUND`)
+- An evidence ID in any other namespace (a CIR signal, a URL, a commit) is
+  recorded but not resolved by the ledger; its verification belongs to a
+  verifier that can reach it
 
 ### Integrity
 - IDs are globally unique within workspace

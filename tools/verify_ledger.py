@@ -33,12 +33,29 @@ unhashed rows and concurrency forks). Therefore:
              a break. A missing-ancestor link on any LATER row — once the chain
              is established — is a genuine break.
 
-Exit non-zero iff: any content-hash mismatch, any missing-ancestor break (after
-the genesis anchor), or any post-cutover unhashed row.
+Coverage (v2.3) — content hashes exclude `prevHash`, so they say nothing about
+order. What the chain establishes is which hashed rows the head's ancestry
+reaches (CANONICAL), and which others at least branch from it (FORK rows). A
+hashed row that does neither sits on a DETACHED segment: every row it links to
+is off the ancestry, back to genesis or an unknown hash. Its place in the
+history is not established. Rewiring parent pointers without rehashing produces
+exactly this, and so does a restarted history; the verifier cannot tell which.
+
+Verdict, under a named profile:
+  verified   — no failure, and the chain places every hashed row
+               (profile v2.2: on the ancestry or on a branch from it;
+                profile strict: on the ancestry, no branches)
+  incomplete — no failure, but some hashed rows are detached. Not a pass.
+  failed     — any content-hash mismatch, any missing-ancestor break (after the
+               genesis anchor), any post-cutover unhashed row, or (strict) any
+               branch or detached row.
+
+Exit status: 0 verified, 1 failed, 2 incomplete.
 
 Usage:
   python3 verify_ledger.py [PATH]     # default: ~/.mentu/ledger.jsonl
   python3 verify_ledger.py --json PATH
+  python3 verify_ledger.py --profile strict PATH
 """
 import hashlib
 import json
@@ -63,7 +80,7 @@ def _kind(s):
     return p.get("kind") if isinstance(p, dict) else None
 
 
-def verify(path):
+def verify(path, profile="v2.2"):
     total = hashed = content_ok = content_bad = unhashed = 0
     canonical_ok = breaks = forks = 0
     unhashed_pre_cutover = unhashed_post_cutover = 0
@@ -74,6 +91,7 @@ def verify(path):
     cutover_line = None     # line index of the most recent lane_cutover marker
     genesis_anchor = None   # {line, prevHash} of the file's first hashed row
     first_hashed_seen = False
+    rows = []               # (line, hash, prevHash) of every hashed row, in file order
 
     with open(path, "r", errors="replace") as f:
         for lineno, line in enumerate(f, 1):
@@ -129,10 +147,15 @@ def verify(path):
 
             first_hashed_seen = True
             seen_hashes.setdefault(s["hash"], lineno)
+            rows.append((lineno, s["hash"], ph))
 
     forks = sum(n - 1 for n in parent_children.values() if n > 1)
 
-    ok = content_bad == 0 and breaks == 0 and unhashed_post_cutover == 0
+    coverage = _coverage(rows)
+    failed = content_bad > 0 or breaks > 0 or unhashed_post_cutover > 0
+    if profile == "strict":
+        failed = failed or coverage["fork_rows"] > 0 or coverage["detached_rows"] > 0
+    verdict = "failed" if failed else ("incomplete" if coverage["detached_rows"] else "verified")
     return {
         "path": path,
         "signals_total": total,
@@ -150,20 +173,88 @@ def verify(path):
         "cutover_present": cutover_line is not None,
         "first_bad": first_bad,
         "first_break": first_break,
-        "ok": ok,
+        "coverage": coverage,
+        "profile": profile,
+        "verdict": verdict,
+        "ok": verdict == "verified",
     }
 
 
+def _coverage(rows):
+    """Place every hashed row relative to the ancestry of the last one."""
+    by_hash = {}
+    for line, h, _ in rows:
+        by_hash.setdefault(h, line)
+    prev_of = {line: ph for line, _, ph in rows}
+    canonical = set()
+    if rows:
+        line = rows[-1][0]
+        while line is not None and line not in canonical:
+            canonical.add(line)
+            parent = by_hash.get(prev_of[line])
+            line = parent if parent is not None and parent < line else None
+    reaches = {line: True for line in canonical}
+
+    def reaches_ancestry(line):
+        path = []
+        answer = False
+        while True:
+            if line in reaches:
+                answer = reaches[line]
+                break
+            path.append(line)
+            parent = by_hash.get(prev_of[line])
+            if parent is None or parent >= line:
+                break
+            line = parent
+        for seen in path:
+            reaches[seen] = answer
+        return answer
+
+    fork_rows = detached_rows = 0
+    first_detached = None
+    for line, _, _ in rows:
+        if line in canonical:
+            continue
+        if reaches_ancestry(line):
+            fork_rows += 1
+        else:
+            detached_rows += 1
+            first_detached = first_detached or line
+    return {
+        "hashed_rows": len(rows),
+        "canonical_rows": len(canonical),
+        "fork_rows": fork_rows,
+        "detached_rows": detached_rows,
+        "first_detached_line": first_detached,
+        "order_bound_by_content_hash": False,
+    }
+
+
+EXIT = {"verified": 0, "failed": 1, "incomplete": 2}
+PROFILES = ("v2.2", "strict")
+
+
 def main():
-    args = [a for a in sys.argv[1:] if a != "--json"]
-    as_json = "--json" in sys.argv[1:]
+    argv = sys.argv[1:]
+    as_json = "--json" in argv
+    profile = "v2.2"
+    if "--profile" in argv:
+        i = argv.index("--profile")
+        profile = argv[i + 1] if i + 1 < len(argv) else ""
+        del argv[i:i + 2]
+    if profile not in PROFILES:
+        print(f"unknown profile {profile!r}; valid: {', '.join(PROFILES)}", file=sys.stderr)
+        sys.exit(64)
+    args = [a for a in argv if a != "--json"]
     path = args[0] if args else os.path.expanduser("~/.mentu/ledger.jsonl")
-    r = verify(path)
+    r = verify(path, profile)
     if as_json:
         print(json.dumps(r, indent=2))
-        sys.exit(0 if r["ok"] else 1)
+        sys.exit(EXIT[r["verdict"]])
     ci = r["content_integrity"]
-    print(f"Ledger: {r['path']}")
+    cov = r["coverage"]
+    print(f"Ledger: {r['path']}  (profile {r['profile']})")
     print(f"  signals total        : {r['signals_total']}")
     print(f"  hashed / unhashed    : {r['hashed']} / {r['unhashed']}"
           + (f"  (pre/post cutover: {r['unhashed_pre_cutover']}/{r['unhashed_post_cutover']})"
@@ -178,11 +269,21 @@ def main():
               f"(prevHash {r['genesis_anchor']['prevHash']}… — prior ledger, expected)")
     print(f"  chain breaks         : {r['chain_breaks']} (missing ancestor)"
           + (f"  e.g. {r['first_break']}" if r["chain_breaks"] else ""))
-    print(f"  chain forks          : {r['chain_forks']} (concurrency artifact, non-fatal)")
+    print(f"  chain forks          : {r['chain_forks']} (concurrency artifact"
+          + (", fatal under strict)" if r["profile"] == "strict" else ", non-fatal)"))
+    print(f"  placed by the chain  : {cov['canonical_rows']} on the ancestry, "
+          f"{cov['fork_rows']} on branches, {cov['detached_rows']} detached"
+          + (f" (first at line {cov['first_detached_line']})" if cov["detached_rows"] else ""))
     if r["cutover_present"] and r["unhashed_post_cutover"]:
         print(f"  POST-CUTOVER unhashed: {r['unhashed_post_cutover']}  (chain violations)")
-    print(f"  RESULT               : {'LEDGER INTEGRITY VERIFIED' if r['ok'] else 'LEDGER INTEGRITY FAILED'}")
-    sys.exit(0 if r["ok"] else 1)
+    result = {
+        "verified": "VERIFIED — content matches and the chain places every hashed row "
+                    "(parent links are not covered by content hashes)",
+        "incomplete": "INCOMPLETE — not a pass: detached rows have no established order",
+        "failed": "LEDGER INTEGRITY FAILED",
+    }[r["verdict"]]
+    print(f"  RESULT               : {result}")
+    sys.exit(EXIT[r["verdict"]])
 
 
 if __name__ == "__main__":

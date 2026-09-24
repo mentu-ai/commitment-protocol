@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.3 — 2026-09-23 (verdicts that state what they checked)
+
+Closes three gaps found by a component audit (2026-09-22): a
+verifier that called a rewired chain valid, a trust label that did not
+separate failed tests from missing ones, and governance that accepted
+references to rows that do not exist. The hash algorithm and the ledger
+format are unchanged; every v2.2 ledger remains readable.
+
+### Changed
+- **Verification verdict** ([spec/LEDGER.md](spec/LEDGER.md) §Verdict and coverage): a verifier places every hashed row as canonical, branch or detached, reports the counts, and returns `verified`, `incomplete` or `failed` under a named profile (`v2.2` default, `strict`). Detached rows make the verdict `incomplete` (exit 2), not valid. The reference verifier (`tools/verify_ledger.py`) implements it; `--profile strict` refuses branches too. Content hashes still exclude `prevHash`, so no profile detects a rewrite that keeps every row placed; the spec says so.
+- **Trust labels** ([spec/TRUST.md](spec/TRUST.md) §Verification Levels): tests are `tests:pass`, `tests:fail` or `tests:no_evidence`; only a passing test report can yield `machine_verified`, a failing one yields `unverified`, and none yields at most `partially_verified`. Earlier `machine_verified` records carrying `tests:inferred_from_build` read as `partially_verified`.
+- **References and ownership** ([spec/PROTOCOL.md](spec/PROTOCOL.md) §Invariants): evidence IDs in the ledger's namespace must resolve (`E_REF_NOT_FOUND`); other namespaces are recorded, not resolved. Only the owner may `submit`.
+
 ## v2.2 — 2026-07-05 (protocol & ledger hardening)
 
 Extends truth-by-replay from the commitment plane to the execution plane and

@@ -155,7 +155,7 @@ They form a closed algebra. Any primitive embeds any other without modification.
 
 ## Merkle Chain
 
-Every signal carries the SHA-256 hash of the one before it. The genesis signal links to 64 zeros. The chain is verifiable end-to-end.
+Every signal carries the SHA-256 hash of the one before it. The genesis signal links to 64 zeros. A signal's own hash covers its content but not that link, so what a verifier can establish about order is which rows the chain places, and it says so ([LEDGER.md §Verdict and coverage](./spec/LEDGER.md)).
 
 ```python
 import hashlib, json
@@ -179,9 +179,11 @@ The [sample ledger](./examples/sample-ledger.jsonl) ships with real hashes, and
 python3 tools/verify_ledger.py examples/sample-ledger.jsonl
 ```
 
-It recomputes every content hash, walks the chain, and exits non-zero on a
-mismatch, a missing ancestor, or a post-cutover unhashed row. On the sample
-ledger it reports 6/6 verified.
+It recomputes every content hash, places every hashed row on the chain, and
+returns `verified` (exit 0), `failed` (exit 1: a mismatch, a missing ancestor,
+or a post-cutover unhashed row) or `incomplete` (exit 2: rows the chain does
+not place, which is not a pass). `--profile strict` also refuses branches. On
+the sample ledger it reports 6 of 6 rows on the ancestry, verified.
 
 ---
 

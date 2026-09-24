@@ -480,11 +480,47 @@ ledger anchor` / `mentu ledger cutover`), so they are themselves chain anchors.
   after it, an unhashed row is fatal. Drop this once external hook writers have
   migrated onto a hashed append path.
 
-A conforming verifier exits non-zero iff: any content-hash mismatch, any break
+A conforming verifier fails a ledger on any content-hash mismatch, any break
 (missing ancestor after the genesis anchor), or any unhashed row after a
 `lane_cutover`. Forks, the genesis/import anchor, and pre-cutover unhashed rows
-are reported but never fatal. The reference implementation is
-`protocol/tools/verify_ledger.py`; run it against a real `.mentu/ledger.jsonl`.
+are reported but never fatal under the default profile. The reference
+implementation is `protocol/tools/verify_ledger.py`; run it against a real
+`.mentu/ledger.jsonl`, always with an explicit path.
+
+#### Verdict and coverage (v2.3)
+
+The content hash excludes `prevHash`, so it says nothing about order: rewriting
+parent pointers leaves every content hash intact. What the chain does establish
+is which hashed rows the head's ancestry reaches. A v2.2 verifier that passed
+every row whose `prevHash` resolved (or was genesis) reported a ledger with all
+its parent pointers rewired to genesis as valid. From v2.3 a conforming verifier
+places every hashed row relative to the ancestry of the last hashed row:
+
+- **canonical** — on that ancestry;
+- **branch** — off it, but its parent links lead back onto it (a fork tail);
+- **detached** — off it, and its parent links never reach it (they end at
+  genesis or at an unknown hash). Its place in the history is not established.
+  A restarted history and rewired parent pointers both look like this; a
+  verifier cannot tell which.
+
+It MUST report these counts and MUST return one of three verdicts under a named
+profile, never a bare "valid":
+
+| Verdict | Meaning | Exit |
+|---|---|---|
+| `verified` | No failure, and the chain places every hashed row | 0 |
+| `incomplete` | No failure, but some hashed rows are detached. **Not a pass** | 2 |
+| `failed` | A failure as above, or a row the profile forbids | 1 |
+
+| Profile | Branches | Detached rows | For |
+|---|---|---|---|
+| `v2.2` (default) | permitted | `incomplete` | ledgers with historical concurrency forks |
+| `strict` | `failed` | `failed` | ledgers written only under the resolved-path append lock |
+
+No profile detects a rewrite that keeps every row placed: that needs a
+construction binding each row to its ancestry, which this version does not
+define. A `verified` verdict states coverage; it does not attest to order
+beyond it.
 
 ---
 

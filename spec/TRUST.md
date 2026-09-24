@@ -116,11 +116,26 @@ Each event records: signal ID, event type, old confidence, new confidence, cause
 
 | Level | Meaning |
 |-------|---------|
-| `unverified` | No mechanical or human verification |
-| `machine_verified` | Passed automated checks (build, tests, lint) |
+| `unverified` | Not verified. From the trust computer: a check the run reported failed, named in `chain` (`exit_code:1`, `tests:fail`). As a default: no trust was computed |
+| `partially_verified` | No check failed, but one the run expects was not established — for example, no test report (v2.3) |
+| `machine_verified` | Passed automated checks. From the trust computer: exit status 0, completion detected, and a passing test report |
 | `human_verified` | Explicitly reviewed by a human actor |
 
-Verification level is set at creation and can only increase — `unverified` → `machine_verified` → `human_verified`. It never decreases.
+**Per-check components (v2.3).** A label summarizes; `chain` carries each check
+as passed, failed or absent. Tests are `tests:pass`, `tests:fail` or
+`tests:no_evidence`. A failed check and a missing one are different facts, and
+the trust computer MUST NOT give them the same label: a run whose tests failed is
+`unverified`, a run with no test report is at most `partially_verified`, and only
+a passing test report can yield `machine_verified`. A successful build is not
+test evidence.
+
+**Reading earlier records.** Before v2.3 the reference engine wrote
+`tests:inferred_from_build` for a run with no test report and still labelled it
+`machine_verified`. Records are append-only, so readers map instead of
+rewriting: a `machine_verified` record whose chain contains
+`tests:inferred_from_build` reads as `partially_verified`.
+
+Verification level is set at creation and can only increase — `unverified` → `partially_verified` → `machine_verified` → `human_verified`. It never decreases.
 
 ---
 
