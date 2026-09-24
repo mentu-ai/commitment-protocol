@@ -91,7 +91,7 @@ Content injected into an execution primitive — content the primitive did not
 derive from the ledger itself — MUST be recorded as a signal before it is
 consumed.
 
-The canonical case is **mid-run steering**: a steer message (`mentu steer`)
+The canonical case is **mid-run steering**: a steer message (in Mentu, `mentu steer`)
 alters the model input of the next step or beat. Recording only that a steer
 occurred (a count) is not enough; the message *content* changed what the agent
 saw, so the content is durable evidence. An implementation MUST append the full

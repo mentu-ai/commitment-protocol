@@ -1,13 +1,15 @@
-# The Mentu Protocol
+# The Commitment Protocol
 
-**Version**: 2.2
+**Version**: 2.3
 **Status**: Stable
 
 ---
 
 ## Overview
 
-Mentu is a commitment protocol. It defines how observations become obligations, how obligations become work, and how work becomes closure.
+The Commitment Protocol is an accountability ledger for agent work. It defines how observations become obligations, how obligations become work, and how work becomes closure.
+
+The name follows the multi-agent-systems literature on commitments, in which a commitment is an obligation from one party to another that operations create, discharge or cancel (Singh, *An ontology for commitments in multiagent systems*, 1999; Yolum and Singh, *Flexible protocol specification and execution*, 2002). This protocol records such obligations for agent work and requires evidence to close them. Mentu is one implementation.
 
 The protocol is:
 - **Append-only, hash-chained** — Nothing edited or deleted. Every entry links to the one before it.
@@ -422,7 +424,7 @@ v1.0 operations `link`, `dismiss`, `triage` are accepted as `annotate` with the 
 
 A conforming v2.0 implementation MUST:
 
-1. Store ledger as append-only JSONL at `.mentu/ledger.jsonl`
+1. Store the ledger as append-only JSON Lines, at a location the implementation documents (Mentu uses `.mentu/ledger.jsonl`)
 2. Implement all nine operations
 3. Enforce all structural, state, and integrity invariants
 4. Compute state by replay

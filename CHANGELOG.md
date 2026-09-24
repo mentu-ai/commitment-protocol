@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.3 — 2026-09-23 (verdicts that state what they checked)
+## v2.3 — 2026-09-24 (verdicts that state what they checked)
 
 Closes three gaps found by a component audit (2026-09-22): a
 verifier that called a rewired chain valid, a trust label that did not
@@ -12,6 +12,12 @@ format are unchanged; every v2.2 ledger remains readable.
 - **Verification verdict** ([spec/LEDGER.md](spec/LEDGER.md) §Verdict and coverage): a verifier places every hashed row as canonical, branch or detached, reports the counts, and returns `verified`, `incomplete` or `failed` under a named profile (`v2.2` default, `strict`). Detached rows make the verdict `incomplete` (exit 2), not valid. The reference verifier (`tools/verify_ledger.py`) implements it; `--profile strict` refuses branches too. Content hashes still exclude `prevHash`, so no profile detects a rewrite that keeps every row placed; the spec says so.
 - **Trust labels** ([spec/TRUST.md](spec/TRUST.md) §Verification Levels): tests are `tests:pass`, `tests:fail` or `tests:no_evidence`; only a passing test report can yield `machine_verified`, a failing one yields `unverified`, and none yields at most `partially_verified`. Earlier `machine_verified` records carrying `tests:inferred_from_build` read as `partially_verified`.
 - **References and ownership** ([spec/PROTOCOL.md](spec/PROTOCOL.md) §Invariants): evidence IDs in the ledger's namespace must resolve (`E_REF_NOT_FOUND`); other namespaces are recorded, not resolved. Only the owner may `submit`.
+
+### Renamed
+- **The Commitment Protocol.** The specification is named for what it does, an accountability ledger for agent work, rather than after an implementation. `spec/PROTOCOL.md` was titled "The Mentu Protocol" while this README said "The Commitment Protocol"; both now say the latter, and the name's lineage in the multi-agent-systems literature on commitments is credited. Mentu is one implementation. Paths such as `.mentu/ledger.jsonl` and commands such as `mentu claim` are described as Mentu's, not as part of the protocol. The `x-mentu` OKF extension key is unchanged, so existing bundles stay valid. The repository moved from `mentu-ai/protocol` to `mentu-ai/commitment-protocol`; GitHub redirects the old address. Earlier entries below keep the names they were written with.
+- **Conformance:** an implementation stores the ledger at a location it documents. It no longer MUST use `.mentu/ledger.jsonl`.
+- **README:** the invariant "every `prevHash` matches the prior `hash`" now matches LEDGER.md: a `prevHash` resolves to an earlier hashed row, and a verifier states which rows the chain places.
+- **Reference verifier:** it requires an explicit path. It no longer defaults to `~/.mentu/ledger.jsonl`, which pointed a first run at a live ledger.
 
 ## v2.2 — 2026-07-05 (protocol & ledger hardening)
 

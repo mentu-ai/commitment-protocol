@@ -9,7 +9,7 @@
 
 The Genesis Key is an optional workspace constitution. It defines who owns the workspace, who can do what, and what requires approval.
 
-**Location**: `.mentu/genesis.key`
+**Location**: documented by the implementation (Mentu uses `.mentu/genesis.key`)
 **Format**: YAML
 
 ---
@@ -379,9 +379,9 @@ federation:
 ## Validation
 
 Genesis Key is validated on:
-- `mentu init` with `--genesis` flag
-- `mentu genesis validate`
-- First operation after Genesis Key modification
+- initialization with a Genesis Key (in Mentu, `mentu init --genesis`)
+- explicit validation (in Mentu, `mentu genesis validate`)
+- the first operation after the Genesis Key is modified
 
 Invalid Genesis Key blocks all operations.
 

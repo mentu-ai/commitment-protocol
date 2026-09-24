@@ -1,6 +1,6 @@
 # Example Workflow
 
-A complete example showing the Mentu protocol in action.
+A complete example showing the Commitment Protocol in action, using the `mentu` CLI (one implementation).
 
 ---
 

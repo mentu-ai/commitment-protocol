@@ -1,6 +1,6 @@
 # The Commitment Protocol
 
-Observations become obligations. Obligations require evidence. Evidence is hash-chained, trust-scored, and append-only. State is never stored. It is computed by replaying the ledger.
+**An accountability ledger for agent work.** Observations become obligations. Obligations require evidence. Evidence is hash-chained, trust-scored, and append-only. State is never stored. It is computed by replaying the ledger.
 
 ```jsonl
 {"id":"mem_a1b2c3d4","op":"capture","hash":"5173eb47...","prevHash":"00000000...","payload":{"body":"Customer reported checkout fails on empty cart","kind":"observation"}}
@@ -25,7 +25,7 @@ model who wants agent work to close against evidence rather than assertion.
 Verify the sample chain in one command. Python 3 is the only requirement:
 
 ```bash
-git clone https://github.com/mentu-ai/protocol && cd protocol
+git clone https://github.com/mentu-ai/commitment-protocol && cd commitment-protocol
 python3 tools/verify_ledger.py examples/sample-ledger.jsonl
 ```
 
@@ -189,7 +189,7 @@ the sample ledger it reports 6 of 6 rows on the ancestry, verified.
 
 ## Agent Workflow
 
-Any agent that can read a file and run shell commands can follow the protocol. No SDK. No integration. Drop [AGENTS.md](./agents/AGENTS.md) into `.mentu/` and the agent knows what to do.
+Any agent that can read a file and run shell commands can follow the protocol. No SDK. No integration. Drop [AGENTS.md](./agents/AGENTS.md) into the workspace's ledger directory (`.mentu/` in Mentu) and the agent knows what to do.
 
 This repository is the specification. `mentu` is one implementation of it, and
 it is what the commands below invoke:
@@ -212,7 +212,7 @@ is a few lines of Python, so any agent that can append to a file can participate
 ## Five Invariants
 
 1. **Append-only.** Signals are never updated or deleted.
-2. **Merkle integrity.** Every `prevHash` matches the prior `hash`.
+2. **Chain integrity.** Every `prevHash` resolves to an earlier hashed row, and a verifier states which rows the chain places ([LEDGER.md](./spec/LEDGER.md) §Verdict and coverage).
 3. **Citation gate.** Findings must reference their source.
 4. **Mechanical trust.** Computed from observation, never self-reported.
 5. **Read before act.** Query prior evidence before acting. *(recommended)*
@@ -222,6 +222,8 @@ is a few lines of Python, so any agent that can append to a file can participate
 ---
 
 ## Workspace
+
+An implementation chooses where the ledger lives and documents it. Mentu, one implementation, uses:
 
 ```
 .mentu/
@@ -245,7 +247,7 @@ The ledger is the source of truth. State is always computed by replaying it. Not
 | [EXECUTION.md](./spec/EXECUTION.md) | Ten primitives, composition algebra, embedding principle |
 | [INVARIANTS.md](./spec/INVARIANTS.md) | Five structural guarantees |
 | [GENESIS.md](./spec/GENESIS.md) | Workspace constitution, permissions, trust weights |
-| [OKF.md](./spec/OKF.md) | The Open Knowledge Format and the x-mentu profile: portable knowledge bundles on the protocol's signal graph |
+| [OKF.md](./spec/OKF.md) | The Open Knowledge Format and the `x-mentu` extension profile: portable knowledge bundles on the protocol's signal graph |
 
 ---
 

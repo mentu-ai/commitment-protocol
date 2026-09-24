@@ -15,13 +15,13 @@ just files. It is readable in any editor, hostable in any git repo, and consumab
 tool that speaks the format.
 
 OKF is not ours. Its shape comes from Andrej Karpathy's *LLM Wiki* and Google Cloud's
-*Open Knowledge Format* (see [Citations](#citations)). This document specifies what Mentu
-adds on top, without changing the core:
+*Open Knowledge Format* (see [Citations](#citations)). This document specifies what the Commitment
+Protocol adds on top, without changing the core:
 
 1. **The `x-mentu` profile**: an extension, carried in OKF's permitted extension space,
    that adds identity, typed relations, trust, progressive staging, and machine-readable
-   twins. A non-mentu consumer ignores it. A Mentu consumer maps it onto the Commitment
-   Protocol's signal graph (see [PROTOCOL.md](./PROTOCOL.md), [TRUST.md](./TRUST.md)).
+   twins. A consumer that does not implement the profile ignores it. One that does maps it onto the
+   protocol's signal graph (see [PROTOCOL.md](./PROTOCOL.md), [TRUST.md](./TRUST.md)).
 2. **Projection**: a non-mutating, lossless way to bring a corpus that already uses its
    own frontmatter schema into OKF, without rewriting its source of truth.
 

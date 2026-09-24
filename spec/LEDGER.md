@@ -1,6 +1,6 @@
 # Ledger Format
 
-**Version**: 2.2
+**Version**: 2.3
 
 ---
 
@@ -8,7 +8,7 @@
 
 The ledger is an append-only, hash-chained sequence of signals stored in JSON Lines format.
 
-**Location**: `.mentu/ledger.jsonl`
+**Location**: documented by the implementation (Mentu uses `.mentu/ledger.jsonl`)
 
 ---
 
@@ -393,7 +393,7 @@ The `hash` field is computed as follows:
 2. Serialize to JSON with **recursively sorted keys** and **no insignificant
    whitespace** (compact separators), escaping forward slashes as `\/` and
    emitting UTF-8 bytes. This matches the engine's `JSONEncoder` with
-   `.sortedKeys` (`MentuEngine` `EpistemicSignal.computeContentHash`).
+   `.sortedKeys` (the Mentu engine's `EpistemicSignal.computeContentHash`).
 3. Compute SHA-256 of the resulting bytes.
 4. Encode as lowercase hexadecimal (64 characters).
 

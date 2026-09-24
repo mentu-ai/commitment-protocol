@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-r"""Reference verifier for the Mentu epistemic ledger (protocol/spec/LEDGER.md).
+r"""Reference verifier for the Commitment Protocol ledger (spec/LEDGER.md).
 
 Recomputes each signal's content hash and checks the merkle chain using the SAME
-canonicalization the engine uses (MentuEngine EpistemicSignal.computeContentHash)
+canonicalization the Mentu engine uses (EpistemicSignal.computeContentHash)
 AND the same chain semantics the engine's own scanner uses
-(MentuEngine MerkleLedgerLineage.scan).
+(Mentu engine: MerkleLedgerLineage.scan).
 
 Content hash — SHA-256 over the signal serialized as JSON with:
   1. `hash` and `prevHash` set to "" — the KEYS ARE RETAINED (Swift zeroes the
@@ -53,7 +53,7 @@ Verdict, under a named profile:
 Exit status: 0 verified, 1 failed, 2 incomplete.
 
 Usage:
-  python3 verify_ledger.py [PATH]     # default: ~/.mentu/ledger.jsonl
+  python3 verify_ledger.py PATH       # the ledger to verify; there is no default
   python3 verify_ledger.py --json PATH
   python3 verify_ledger.py --profile strict PATH
 """
@@ -247,7 +247,10 @@ def main():
         print(f"unknown profile {profile!r}; valid: {', '.join(PROFILES)}", file=sys.stderr)
         sys.exit(64)
     args = [a for a in argv if a != "--json"]
-    path = args[0] if args else os.path.expanduser("~/.mentu/ledger.jsonl")
+    if not args:
+        print("usage: verify_ledger.py [--json] [--profile v2.2|strict] PATH", file=sys.stderr)
+        sys.exit(64)
+    path = args[0]
     r = verify(path, profile)
     if as_json:
         print(json.dumps(r, indent=2))

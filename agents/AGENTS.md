@@ -1,14 +1,14 @@
 # Instructions for AI Agents
 
-This workspace uses Mentu for work coordination.
+This workspace uses the Commitment Protocol for work coordination, through `mentu`, one implementation of it.
 
 **Before doing any work, read this file completely.**
 
 ---
 
-## What is Mentu
+## What is the Commitment Protocol
 
-Mentu is a commitment ledger. Append-only. Hash-chained. It tracks what needs to be done, who is doing it, and proof that it was done.
+The Commitment Protocol is an accountability ledger for agent work. Append-only. Hash-chained. It tracks what needs to be done, who is doing it, and proof that it was done. The commands below use the `mentu` CLI.
 
 - **Observations** become **commitments**
 - **Commitments** require **evidence** to close
